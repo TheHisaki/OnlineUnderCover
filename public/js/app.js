@@ -1,4 +1,7 @@
-const socket = io(); // Se connecte automatiquement au même domaine/port
+const socket = io({
+    transports: ['websocket'], // Force WebSocket pour éviter les problèmes de polling sur Hostinger/clusters
+    upgrade: false
+});
 
 // --- ELEMENTS DU DOM ---
 const loadingScreen = document.getElementById('loading-screen');
@@ -85,6 +88,8 @@ if (savedPlayerName) {
     playerNameInput.value = savedPlayerName;
 }
 
+// Supprimé (redondant)
+
 // --- FONCTIONS UTILITAIRES ---
 function getPlayedWords() {
     try {
@@ -126,7 +131,7 @@ function getPlayerName() {
 // Initialisation avec URL
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.has('room')) {
-    roomCodeInput.value = urlParams.get('room');
+    roomCodeInput.value = urlParams.get('room').toUpperCase();
 }
 
 btnCreateRoom.addEventListener('click', () => {
