@@ -8,6 +8,7 @@ const btnLeavePause = document.getElementById('btn-leave-pause');
 const pauseKickContainer = document.getElementById('pause-kick-container');
 
 const btnAdminGame = document.getElementById('btn-admin-game');
+const btnLeaveGame = document.getElementById('btn-leave-game');
 const adminModal = document.getElementById('admin-modal');
 const btnCloseAdmin = document.getElementById('btn-close-admin');
 const adminPlayersList = document.getElementById('admin-players-list');
@@ -106,6 +107,13 @@ function resetPlayedWords() {
 function showScreen(screenName) {
     Object.values(screens).forEach(screen => screen.classList.remove('active'));
     screens[screenName].classList.add('active');
+
+    // N'afficher le bouton Quitter Global que DANS une partie (pas à l'accueil ni au lobby)
+    if (screenName !== 'home' && screenName !== 'lobby') {
+        btnLeaveGame.classList.remove('hidden');
+    } else {
+        btnLeaveGame.classList.add('hidden');
+    }
 }
 
 function getPlayerName() {
@@ -200,6 +208,16 @@ btnLeaveRoom.addEventListener('click', () => {
             isMyCreator = false;
         }
     });
+});
+
+btnLeaveGame.addEventListener('click', () => {
+    if (confirm("Voulez-vous vraiment quitter la partie en cours ?")) {
+        socket.emit('abandon_game', sessionId);
+        window.history.replaceState(null, '', '/');
+        btnLeaveGame.classList.add('hidden');
+        btnAdminGame.classList.add('hidden');
+        showScreen('home');
+    }
 });
 
 btnLeavePause.addEventListener('click', () => {
