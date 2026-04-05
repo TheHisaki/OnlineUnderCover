@@ -1,7 +1,4 @@
-const socket = io({
-    transports: ['websocket'], // Force WebSocket pour éviter les problèmes de polling sur Hostinger/clusters
-    upgrade: false
-});
+const socket = io(); // Rétablissement de la connexion automatique par défaut (autorise Polling)
 
 // --- ELEMENTS DU DOM ---
 const loadingScreen = document.getElementById('loading-screen');
