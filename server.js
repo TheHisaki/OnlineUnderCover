@@ -134,7 +134,15 @@ io.on('connection', (socket) => {
     socket.on('leave_room', (callback) => {
         const roomCode = socket.roomId;
         if (roomCode && rooms[roomCode]) {
-            handlePlayerLeave(socket, roomCode);
+            const room = rooms[roomCode];
+            const pIndex = room.players.findIndex(p => p.socketId === socket.id);
+            if (pIndex !== -1) {
+                const name = room.players[pIndex].name;
+                if (room.state === 'lobby') {
+                    io.to(roomCode).emit('notification', `${name} a quitté le salon.`);
+                }
+                handlePlayerLeaveIndex(roomCode, pIndex);
+            }
             socket.roomId = null;
             if (callback) callback({ success: true });
         }
@@ -390,8 +398,12 @@ io.on('connection', (socket) => {
 
     socket.on('abandon_game', (sessionId) => {
         for (const [roomCode, room] of Object.entries(rooms)) {
-            const pIndex = room.players.findIndex(p => p.id === sessionId && !p.isConnected);
+            const pIndex = room.players.findIndex(p => p.id === sessionId);
             if (pIndex !== -1) {
+                const name = room.players[pIndex].name;
+                if (room.state === 'lobby') {
+                    io.to(roomCode).emit('notification', `${name} a quitté le salon.`);
+                }
                 handlePlayerLeaveIndex(roomCode, pIndex);
                 break;
             }
@@ -442,12 +454,7 @@ io.on('connection', (socket) => {
     function handlePlayerLeave(roomCode, sessionId) {
         if (roomCode && rooms[roomCode]) {
             const room = rooms[roomCode];
-            // Si on utilise handlePlayerLeave generique, on essaie de match exactement avec le socket si disponible
-            // Sinon on match sur l'ID (utile en dev-multionglets)
-            let playerIndex = room.players.findIndex(p => p.id === sessionId && p.socketId === socket.id);
-            if (playerIndex === -1) {
-                playerIndex = room.players.findIndex(p => p.id === sessionId);
-            }
+            let playerIndex = room.players.findIndex(p => p.id === sessionId);
             if (playerIndex !== -1) {
                 handlePlayerLeaveIndex(roomCode, playerIndex);
             }
