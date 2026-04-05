@@ -273,15 +273,8 @@ io.on('connection', (socket) => {
         if (player) {
             player.hasSeenWord = true;
             io.to(room.id).emit('update_room', room);
-
             // Vérifier si tous ont vu (seulement les connectés)
-            const activePlayers = room.players.filter(p => p.isConnected);
-            const allSeen = activePlayers.every(p => p.hasSeenWord);
-            if (allSeen && activePlayers.length > 0) {
-                room.state = 'discussion';
-                io.to(room.id).emit('phase_changed', room.state);
-                io.to(room.id).emit('update_room', room);
-            }
+            checkPhaseProgression(room);
         }
     });
 
@@ -315,47 +308,7 @@ io.on('connection', (socket) => {
 
             io.to(room.id).emit('update_room', room); // Met à jour qui a voté
 
-            const activePlayers = room.players.filter(p => p.isConnected);
-            const allVoted = activePlayers.every(p => p.hasVoted);
-            if (allVoted && activePlayers.length > 0) {
-                // Calcul du résultat
-                let maxVotes = -1;
-                let eliminatedIds = [];
-                for (const [id, count] of Object.entries(room.votes)) {
-                    if (count > maxVotes) {
-                        maxVotes = count;
-                        eliminatedIds = [id];
-                    } else if (count === maxVotes) {
-                        eliminatedIds.push(id);
-                    }
-                }
-
-                if (eliminatedIds.length > 1) {
-                    // Egalité
-                    room.eliminatedPlayer = "equality";
-                    // Continuer sans éliminer ou refaire voter : pour faire simple, on va dire on n'élimine personne
-                } else {
-                    const elimPlay = room.players.find(p => p.id === eliminatedIds[0]);
-                    room.eliminatedPlayer = elimPlay;
-
-                    // Vérifier la victoire
-                    if (elimPlay.role === 'imposter') {
-                        // Vérifier s'il reste des imposteurs
-                        const remainingImposters = room.players.filter(p => p.role === 'imposter' && p.id !== elimPlay.id).length;
-                        if (remainingImposters === 0) {
-                            room.winner = 'civilians';
-                        }
-                    } else {
-                        // Les imposteurs gagnent si les civils sont de moins en moins, ici simplifié: s'ils éliminent un civil
-                        // (On pourrait calculer finement en vrai jeu, ex: s'il ne reste que 1 civil et 1 imposteur)
-                        room.winner = 'imposters'; 
-                    }
-                }
-                
-                room.state = 'results';
-                io.to(room.id).emit('phase_changed', room.state);
-                io.to(room.id).emit('update_room', room);
-            }
+            checkPhaseProgression(room);
         }
     });
 
@@ -479,9 +432,10 @@ io.on('connection', (socket) => {
             room.state = room.previousState;
             io.to(room.id).emit('resume_game');
             io.to(room.id).emit('phase_changed', room.state);
+            checkPhaseProgression(room);
         } else {
-            const discPlayer = room.players.find(x => !x.isConnected);
-            io.to(room.id).emit('pause_game', discPlayer);
+            const disconnectedPlayers = room.players.filter(x => !x.isConnected);
+            io.to(room.id).emit('pause_game', disconnectedPlayers);
         }
     }
 
@@ -556,12 +510,66 @@ io.on('connection', (socket) => {
                     }
                     
                     checkAndResumeGame(room);
+                    if (room.state !== 'paused' && room.state !== 'results') {
+                        checkPhaseProgression(room);
+                    }
                 }
                 io.to(roomCode).emit('update_room', room);
                 if (room.state === 'paused') {
                     const disconnectedPlayers = room.players.filter(x => !x.isConnected);
                     io.to(roomCode).emit('pause_game', disconnectedPlayers);
                 }
+            }
+        }
+    }
+    
+    function checkPhaseProgression(room) {
+        if (room.state === 'word_distribution') {
+            const activePlayers = room.players.filter(p => p.isConnected);
+            const allSeen = activePlayers.every(p => p.hasSeenWord);
+            if (allSeen && activePlayers.length > 0) {
+                room.state = 'discussion';
+                io.to(room.id).emit('phase_changed', room.state);
+                io.to(room.id).emit('update_room', room);
+            }
+        } else if (room.state === 'voting') {
+            const activePlayers = room.players.filter(p => p.isConnected);
+            const allVoted = activePlayers.every(p => p.hasVoted);
+            if (allVoted && activePlayers.length > 0) {
+                // Calcul du résultat
+                let maxVotes = -1;
+                let eliminatedIds = [];
+                for (const [id, count] of Object.entries(room.votes)) {
+                    if (count > maxVotes) {
+                        maxVotes = count;
+                        eliminatedIds = [id];
+                    } else if (count === maxVotes) {
+                        eliminatedIds.push(id);
+                    }
+                }
+
+                if (eliminatedIds.length > 1) {
+                    // Egalité
+                    room.eliminatedPlayer = "equality";
+                } else if (eliminatedIds.length === 1) {
+                    const elimPlay = room.players.find(p => p.id === eliminatedIds[0]);
+                    room.eliminatedPlayer = elimPlay;
+
+                    if (elimPlay.role === 'imposter') {
+                        const remainingImposters = room.players.filter(p => p.role === 'imposter' && p.id !== elimPlay.id).length;
+                        if (remainingImposters === 0) {
+                            room.winner = 'civilians';
+                        }
+                    } else {
+                        room.winner = 'imposters'; 
+                    }
+                } else {
+                    room.eliminatedPlayer = "equality";
+                }
+                
+                room.state = 'results';
+                io.to(room.id).emit('phase_changed', room.state);
+                io.to(room.id).emit('update_room', room);
             }
         }
     }

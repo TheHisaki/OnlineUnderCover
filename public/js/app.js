@@ -31,10 +31,6 @@ const btnCreateRoom = document.getElementById('btn-create-room');
 const btnJoinRoom = document.getElementById('btn-join-room');
 const homeError = document.getElementById('home-error');
 
-const reconnectCard = document.getElementById('reconnect-card');
-const btnRejoinRoom = document.getElementById('btn-rejoin-room');
-const btnAbandonRoom = document.getElementById('btn-abandon-room');
-
 // Elements Lobby
 const currentRoomCode = document.getElementById('current-room-code');
 const btnCopyCode = document.getElementById('btn-copy-code');
@@ -173,26 +169,6 @@ btnJoinRoom.addEventListener('click', () => {
     }
 });
 
-btnRejoinRoom.addEventListener('click', () => {
-    socket.emit('rejoin_game', sessionId, (rejoinRes) => {
-        if (rejoinRes.success) {
-            window.history.replaceState(null, '', '/?room=' + rejoinRes.roomCode);
-            reconnectCard.classList.add('hidden');
-        } else {
-            alert("Il est trop tard pour rejoindre ce salon ! (La partie est peut-être terminée ou annulée)");
-            reconnectCard.classList.add('hidden');
-            window.history.replaceState(null, '', '/');
-            socket.emit('abandon_game', sessionId);
-        }
-    });
-});
-
-btnAbandonRoom.addEventListener('click', () => {
-    socket.emit('abandon_game', sessionId);
-    window.history.replaceState(null, '', '/');
-    reconnectCard.classList.add('hidden');
-});
-
 btnCopyCode.addEventListener('click', () => {
     navigator.clipboard.writeText(currentRoomCode.textContent).then(() => {
         const originalText = btnCopyCode.textContent;
@@ -319,17 +295,26 @@ socket.on('connect', () => {
     // Vérifier s'il y avait une partie
     socket.emit('check_reconnect', sessionId, (res) => {
         if (res.canReconnect) {
-            reconnectCard.classList.remove('hidden');
+            // Auto Rejoin silencieux (ne retourne jamais à l'accueil)
+            socket.emit('rejoin_game', sessionId, (rejoinRes) => {
+                if (rejoinRes.success) {
+                    window.history.replaceState(null, '', '/?room=' + rejoinRes.roomCode);
+                } else {
+                    window.history.replaceState(null, '', '/');
+                    socket.emit('abandon_game', sessionId);
+                }
+                setTimeout(() => {
+                    loadingScreen.classList.remove('active');
+                    setTimeout(() => { loadingScreen.style.display = 'none'; }, 500);
+                }, 500);
+            });
         } else {
-            reconnectCard.classList.add('hidden');
+            setTimeout(() => {
+                loadingScreen.classList.remove('active');
+                setTimeout(() => { loadingScreen.style.display = 'none'; }, 500);
+            }, 500);
         }
     });
-
-    // Cacher l'écran de chargement
-    setTimeout(() => {
-        loadingScreen.classList.remove('active');
-        setTimeout(() => { loadingScreen.style.display = 'none'; }, 500);
-    }, 1000); // 1 sec mini de loader pour l'effet animation
 });
 
 socket.on('error_message', (msg) => {
