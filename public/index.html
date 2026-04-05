@@ -8,6 +8,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
 </head>
 <body>
+    <!-- NOTIFICATIONS -->
+    <div id="notifications-container"></div>
+
     <!-- ECRAN DE CHARGEMENT -->
     <div id="loading-screen" class="loading-overlay active">
         <img src="/assets/logoUnderCover.png" alt="Undercover Logo" class="loading-logo pulse-animation">
@@ -18,9 +21,20 @@
     <div id="pause-screen" class="loading-overlay">
         <h2>Partie en pause...</h2>
         <p id="pause-text" class="role-text" style="color:white; margin-top:10px;">En attente de la reconnexion d'un joueur...</p>
-        <div class="actions" style="margin-top:20px;">
-            <button id="btn-leave-pause" class="btn btn-danger">Quitter</button>
-            <button id="btn-kick-pause" class="btn secondary hidden">L'exclure</button>
+        <div id="pause-actions" class="actions" style="margin-top:20px; flex-direction: column;">
+            <button id="btn-leave-pause" class="btn btn-danger">Quitter la partie pour de bon</button>
+            <div id="pause-kick-container" style="display:flex; flex-direction:column; gap:10px; margin-top:15px; width:100%;"></div>
+        </div>
+    </div>
+
+    <!-- PANEL ADMIN EN JEU -->
+    <button id="btn-admin-game" class="btn secondary small hidden" style="position:fixed; top:10px; right:10px; z-index:1000;">⚙️ Joueurs</button>
+    
+    <div id="admin-modal" class="loading-overlay" style="background: rgba(0,0,0,0.85); z-index:2000;">
+        <div class="card glass-card" style="width: 90%; max-width: 400px; position:relative;">
+            <button id="btn-close-admin" class="btn small btn-danger" style="position:absolute; top:15px; right:15px; padding: 5px 12px;">X</button>
+            <h2 style="margin-bottom:15px;">Gestion (Créateur)</h2>
+            <ul id="admin-players-list" class="players-list"></ul>
         </div>
     </div>
 

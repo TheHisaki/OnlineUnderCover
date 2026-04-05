@@ -412,6 +412,8 @@ io.on('connection', (socket) => {
                 socket.join(roomCode);
                 socket.roomId = roomCode;
                 
+                io.to(roomCode).emit('notification', `${p.name} s'est reconnecté(e) !`);
+                
                 checkAndResumeGame(room);
 
                 if(room.state !== 'lobby' && room.state !== 'paused') {
@@ -423,6 +425,10 @@ io.on('connection', (socket) => {
                     socket.emit('phase_changed', room.state);
                 }
                 io.to(roomCode).emit('update_room', room);
+                if (room.state === 'paused') {
+                    const disconnectedPlayers = room.players.filter(x => !x.isConnected);
+                    io.to(roomCode).emit('pause_game', disconnectedPlayers);
+                }
                 return callback({ success: true, roomCode });
             }
         }
@@ -444,15 +450,20 @@ io.on('connection', (socket) => {
         for (const [roomCode, room] of Object.entries(rooms)) {
             const pIndex = room.players.findIndex(p => p.socketId === socket.id);
             if (pIndex !== -1) {
+                room.players[pIndex].isConnected = false;
+                
                 if (room.state === 'lobby') {
-                    handlePlayerLeave(roomCode, room.players[pIndex].id);
+                    io.to(roomCode).emit('notification', `${room.players[pIndex].name} a quitté le salon.`);
+                    // Mettre à jour la liste pour afficher (Déconnecté)
+                    io.to(roomCode).emit('update_room', room);
                 } else {
-                    room.players[pIndex].isConnected = false;
+                    io.to(roomCode).emit('notification', `${room.players[pIndex].name} s'est déconnecté(e).`);
                     if (room.state !== 'paused') {
                         room.previousState = room.state;
                         room.state = 'paused';
                     }
-                    io.to(roomCode).emit('pause_game', room.players[pIndex]);
+                    const disconnectedPlayers = room.players.filter(x => !x.isConnected);
+                    io.to(roomCode).emit('pause_game', disconnectedPlayers);
                     io.to(roomCode).emit('update_room', room);
                 }
                 break;
@@ -514,27 +525,43 @@ io.on('connection', (socket) => {
                 
                 // Si en cours de jeu
                 if (room.state !== 'lobby') {
-                    // Check enough players
-                    if (room.players.length < 3) {
-                        room.state = 'results';
-                        room.eliminatedPlayer = "equality";
-                        room.winner = "aborted";
-                        io.to(roomCode).emit('phase_changed', 'results');
+                    // Vérifier qui est parti en premier pour voir si on a un gagnant
+                    if (p.role === 'imposter') {
+                        io.to(roomCode).emit('notification', `L'imposteur ${p.name} a quitté le jeu ! Victoire des civils !`);
+                        const remainingImposters = room.players.filter(x => x.role === 'imposter').length;
+                        if (remainingImposters === 0) {
+                            room.winner = 'civilians';
+                            room.state = 'results';
+                            room.eliminatedPlayer = p;
+                            io.to(roomCode).emit('phase_changed', 'results');
+                        }
                     } else {
-                        // Check imposter left
-                        if (p.role === 'imposter') {
-                            const remainingImposters = room.players.filter(x => x.role === 'imposter').length;
-                            if (remainingImposters === 0) {
-                                room.winner = 'civilians';
-                                room.state = 'results';
-                                room.eliminatedPlayer = p;
-                                io.to(roomCode).emit('phase_changed', 'results');
-                            }
+                        io.to(roomCode).emit('notification', `${p.name} a quitté/a été exclu. Il était civil.`);
+                        const remainingCivilians = room.players.filter(x => x.role === 'civilian').length;
+                        if (remainingCivilians === 0) {
+                            room.winner = 'imposters';
+                            room.state = 'results';
+                            room.eliminatedPlayer = p;
+                            io.to(roomCode).emit('phase_changed', 'results');
                         }
                     }
+
+                    // Check enough players s'il n'y a pas DEJA un gagnant
+                    if (room.state !== 'results' && room.players.length < 3) {
+                        room.state = 'results';
+                        room.eliminatedPlayer = { name: "Personne", role: "inconnu" };
+                        room.winner = "aborted";
+                        io.to(roomCode).emit('phase_changed', 'results');
+                        io.to(roomCode).emit('notification', `Partie annulée : trop peu de joueurs restants.`);
+                    }
+                    
                     checkAndResumeGame(room);
                 }
                 io.to(roomCode).emit('update_room', room);
+                if (room.state === 'paused') {
+                    const disconnectedPlayers = room.players.filter(x => !x.isConnected);
+                    io.to(roomCode).emit('pause_game', disconnectedPlayers);
+                }
             }
         }
     }

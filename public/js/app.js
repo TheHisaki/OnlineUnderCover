@@ -5,7 +5,12 @@ const loadingScreen = document.getElementById('loading-screen');
 const pauseScreen = document.getElementById('pause-screen');
 const pauseText = document.getElementById('pause-text');
 const btnLeavePause = document.getElementById('btn-leave-pause');
-const btnKickPause = document.getElementById('btn-kick-pause');
+const pauseKickContainer = document.getElementById('pause-kick-container');
+
+const btnAdminGame = document.getElementById('btn-admin-game');
+const adminModal = document.getElementById('admin-modal');
+const btnCloseAdmin = document.getElementById('btn-close-admin');
+const adminPlayersList = document.getElementById('admin-players-list');
 
 const screens = {
     home: document.getElementById('home-screen'),
@@ -75,6 +80,11 @@ if (!sessionId) {
     localStorage.setItem('undercover_session_id', sessionId);
 }
 
+let savedPlayerName = localStorage.getItem('undercover_player_name');
+if (savedPlayerName) {
+    playerNameInput.value = savedPlayerName;
+}
+
 // --- FONCTIONS UTILITAIRES ---
 function getPlayedWords() {
     try {
@@ -107,6 +117,7 @@ function getPlayerName() {
         return null;
     }
     homeError.textContent = "";
+    localStorage.setItem('undercover_player_name', name);
     return name;
 }
 
@@ -121,8 +132,15 @@ if (urlParams.has('room')) {
 btnCreateRoom.addEventListener('click', () => {
     const playerName = getPlayerName();
     if (playerName) {
+        const codeAdmin = prompt("Code secret pour créer un salon :");
+        if (codeAdmin !== "180908") {
+            alert("Code invalide. Seul l'administrateur peut créer des salles pour l'instant.");
+            return;
+        }
+
         socket.emit('create_room', { playerName, sessionId }, (res) => {
             if (res.success) {
+                window.history.replaceState(null, '', '/?room=' + res.roomCode);
                 showScreen('lobby');
             }
         });
@@ -131,7 +149,7 @@ btnCreateRoom.addEventListener('click', () => {
 
 btnJoinRoom.addEventListener('click', () => {
     const playerName = getPlayerName();
-    const roomCode = roomCodeInput.value.trim();
+    const roomCode = roomCodeInput.value.trim().toUpperCase();
     
     if (!roomCode) {
         homeError.textContent = "Veuillez entrer un code de salon.";
@@ -141,6 +159,7 @@ btnJoinRoom.addEventListener('click', () => {
     if (playerName) {
         socket.emit('join_room', { playerName, roomCode, sessionId }, (res) => {
             if (res.success) {
+                window.history.replaceState(null, '', '/?room=' + roomCode);
                 showScreen('lobby');
             } else {
                 homeError.textContent = res.message;
@@ -152,10 +171,12 @@ btnJoinRoom.addEventListener('click', () => {
 btnRejoinRoom.addEventListener('click', () => {
     socket.emit('rejoin_game', sessionId, (rejoinRes) => {
         if (rejoinRes.success) {
+            window.history.replaceState(null, '', '/?room=' + rejoinRes.roomCode);
             reconnectCard.classList.add('hidden');
         } else {
             alert("Il est trop tard pour rejoindre ce salon ! (La partie est peut-être terminée ou annulée)");
             reconnectCard.classList.add('hidden');
+            window.history.replaceState(null, '', '/');
             socket.emit('abandon_game', sessionId);
         }
     });
@@ -163,6 +184,7 @@ btnRejoinRoom.addEventListener('click', () => {
 
 btnAbandonRoom.addEventListener('click', () => {
     socket.emit('abandon_game', sessionId);
+    window.history.replaceState(null, '', '/');
     reconnectCard.classList.add('hidden');
 });
 
@@ -194,6 +216,7 @@ btnInvite.addEventListener('click', async () => {
 btnLeaveRoom.addEventListener('click', () => {
     socket.emit('leave_room', (res) => {
         if(res.success) {
+            window.history.replaceState(null, '', '/');
             showScreen('home');
             currentRoom = null;
             isMyCreator = false;
@@ -203,16 +226,19 @@ btnLeaveRoom.addEventListener('click', () => {
 
 btnLeavePause.addEventListener('click', () => {
     socket.emit('abandon_game', sessionId);
+    window.history.replaceState(null, '', '/');
     pauseScreen.classList.remove('active');
     showScreen('home');
     currentRoom = null;
     isMyCreator = false;
 });
 
-btnKickPause.addEventListener('click', () => {
-    if (currentPausedPlayerId && confirm("Exclure défnitivement ce joueur ?")) {
-        socket.emit('kick_player', currentPausedPlayerId);
-    }
+btnAdminGame.addEventListener('click', () => {
+    adminModal.classList.add('active');
+});
+
+btnCloseAdmin.addEventListener('click', () => {
+    adminModal.classList.remove('active');
 });
 
 settingImposterCount.addEventListener('change', () => updateSettings());
@@ -305,6 +331,17 @@ socket.on('error_message', (msg) => {
     alert(msg);
 });
 
+socket.on('notification', (msg) => {
+    const container = document.getElementById('notifications-container');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = msg;
+    container.appendChild(toast);
+    setTimeout(() => {
+        if (container.contains(toast)) toast.remove();
+    }, 4000);
+});
+
 socket.on('out_of_words', (theme) => {
     if (confirm(`Plus aucun mot disponible pour le thème ${theme} (ou tous les mots du jeu) !\nVoulez-vous réinitialiser l'historique des mots joués ?\n(Sinon annulez et changez de thème)`)) {
         resetPlayedWords();
@@ -327,6 +364,7 @@ socket.on('update_room', (room) => {
     if (room.state === 'lobby') {
         showScreen('lobby');
         currentRoomCode.textContent = room.id;
+        btnAdminGame.classList.add('hidden');
         
         // Liste des joueurs
         playersList.innerHTML = '';
@@ -418,22 +456,31 @@ socket.on('update_room', (room) => {
         }
     } else if (room.state === 'results') {
         // Remplir écran résultats
-        if (room.winner === 'civilians') {
+        if (room.winner === 'aborted') {
+            winnerText.textContent = "Partie Annulée 🛑";
+            winnerText.style.color = "gray";
+            eliminatedText.textContent = "Trop peu de joueurs pour continuer.";
+        } else if (room.winner === 'civilians') {
             winnerText.textContent = "Victoire des Civils ! 🎉";
             winnerText.style.color = "var(--success)";
+            if (room.eliminatedPlayer && room.eliminatedPlayer !== "equality") {
+                const roleName = room.eliminatedPlayer.role === 'imposter' ? 'Imposteur' : 'Civil';
+                eliminatedText.innerHTML = `<strong>${room.eliminatedPlayer.name}</strong> a été éliminé. Il était <strong>${roleName}</strong>.`;
+            }
         } else if (room.winner === 'imposters') {
             winnerText.textContent = "Victoire des Imposteurs ! 😈";
             winnerText.style.color = "var(--danger)";
+            if (room.eliminatedPlayer && room.eliminatedPlayer !== "equality") {
+                const roleName = room.eliminatedPlayer.role === 'imposter' ? 'Imposteur' : 'Civil';
+                eliminatedText.innerHTML = `<strong>${room.eliminatedPlayer.name}</strong> a été éliminé. Il était <strong>${roleName}</strong>.`;
+            }
         } else {
             winnerText.textContent = "Égalité / Partie en cours";
             winnerText.style.color = "white";
         }
 
-        if (room.eliminatedPlayer === "equality") {
+        if (room.winner !== 'aborted' && room.eliminatedPlayer === "equality") {
             eliminatedText.textContent = "Personne n'a été éliminé (Égalité des votes).";
-        } else if (room.eliminatedPlayer) {
-            const roleName = room.eliminatedPlayer.role === 'imposter' ? 'Imposteur' : 'Civil';
-            eliminatedText.innerHTML = `<strong>${room.eliminatedPlayer.name}</strong> a été éliminé. Il était <strong>${roleName}</strong>.`;
         }
 
         impostersReveal.innerHTML = '<h4>Les imposteurs étaient:</h4>';
@@ -449,17 +496,49 @@ socket.on('update_room', (room) => {
             btnPlayAgain.classList.add('hidden');
         }
     }
+
+    // Modal Admin Gérés partout si dans la game
+    if (room.state !== 'lobby' && isMyCreator) {
+        btnAdminGame.classList.remove('hidden');
+        adminPlayersList.innerHTML = '';
+        room.players.forEach(p => {
+            const li = document.createElement('li');
+            
+            let nameStr = p.name;
+            if (!p.isConnected) nameStr += " (Déconnecté)";
+
+            let kickBtn = '';
+            if (!p.isCreator) {
+                kickBtn = `<button class="btn-kick" onclick="confirmKick('${p.id}', '${p.name.replace(/'/g, "\\'")}')">&times;</button>`;
+            }
+
+            li.innerHTML = `<span>${nameStr} ${p.socketId === myId ? '(Toi)' : ''}</span> <div>${kickBtn}</div>`;
+            adminPlayersList.appendChild(li);
+        });
+    } else {
+        btnAdminGame.classList.add('hidden');
+    }
 });
 
-socket.on('pause_game', (disconnectedPlayer) => {
-    pauseText.textContent = `En attente de la reconnexion de ${disconnectedPlayer.name}...`;
+socket.on('pause_game', (disconnectedPlayers) => {
+    const names = disconnectedPlayers.map(p => p.name).join(', ');
+    pauseText.textContent = `En attente de la reconnexion de : ${names}...`;
     pauseScreen.classList.add('active');
     
+    pauseKickContainer.innerHTML = '';
+    
     if (isMyCreator) {
-        currentPausedPlayerId = disconnectedPlayer.id;
-        btnKickPause.classList.remove('hidden');
-    } else {
-        btnKickPause.classList.add('hidden');
+        disconnectedPlayers.forEach(p => {
+            const btn = document.createElement('button');
+            btn.className = 'btn secondary small';
+            btn.textContent = `Exclure ${p.name}`;
+            btn.onclick = () => {
+                if (confirm(`Exclure définitivement ${p.name} ? (La partie continuera sans lui ou sera annulée)`)) {
+                    socket.emit('kick_player', p.id);
+                }
+            };
+            pauseKickContainer.appendChild(btn);
+        });
     }
 });
 
@@ -470,6 +549,9 @@ socket.on('resume_game', () => {
 
 socket.on('kicked', () => {
     alert("Vous avez été exclu du salon.");
+    window.history.replaceState(null, '', '/');
+    adminModal.classList.remove('active');
+    pauseScreen.classList.remove('active');
     showScreen('home');
     currentRoom = null;
     isMyCreator = false;
