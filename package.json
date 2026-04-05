@@ -1,0 +1,14 @@
+{
+  "name": "online-undercover",
+  "version": "1.0.0",
+  "description": "Jeu web multijoueur en temps réel inspiré de Undercover",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  }
+}
