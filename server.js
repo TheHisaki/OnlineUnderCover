@@ -30,7 +30,13 @@ const generateRoomCode = () => {
 io.on('connection', (socket) => {
     // --- CREER UN SALON ---
     socket.on('create_room', (data, callback) => {
-        const { playerName, sessionId } = data;
+        const { playerName, sessionId, adminCode } = data;
+
+        // Validation du code secret côté serveur
+        if (adminCode !== "180908") {
+            return callback({ success: false, message: "Code secret invalide." });
+        }
+
         let roomCode = generateRoomCode();
         while (rooms[roomCode]) {
             roomCode = generateRoomCode();
@@ -134,15 +140,7 @@ io.on('connection', (socket) => {
     socket.on('leave_room', (callback) => {
         const roomCode = socket.roomId;
         if (roomCode && rooms[roomCode]) {
-            const room = rooms[roomCode];
-            const pIndex = room.players.findIndex(p => p.socketId === socket.id);
-            if (pIndex !== -1) {
-                const name = room.players[pIndex].name;
-                if (room.state === 'lobby') {
-                    io.to(roomCode).emit('notification', `${name} a quitté le salon.`);
-                }
-                handlePlayerLeaveIndex(roomCode, pIndex);
-            }
+            handlePlayerLeave(socket, roomCode);
             socket.roomId = null;
             if (callback) callback({ success: true });
         }
@@ -398,12 +396,8 @@ io.on('connection', (socket) => {
 
     socket.on('abandon_game', (sessionId) => {
         for (const [roomCode, room] of Object.entries(rooms)) {
-            const pIndex = room.players.findIndex(p => p.id === sessionId);
+            const pIndex = room.players.findIndex(p => p.id === sessionId && !p.isConnected);
             if (pIndex !== -1) {
-                const name = room.players[pIndex].name;
-                if (room.state === 'lobby') {
-                    io.to(roomCode).emit('notification', `${name} a quitté le salon.`);
-                }
                 handlePlayerLeaveIndex(roomCode, pIndex);
                 break;
             }
@@ -454,7 +448,12 @@ io.on('connection', (socket) => {
     function handlePlayerLeave(roomCode, sessionId) {
         if (roomCode && rooms[roomCode]) {
             const room = rooms[roomCode];
-            let playerIndex = room.players.findIndex(p => p.id === sessionId);
+            // Si on utilise handlePlayerLeave generique, on essaie de match exactement avec le socket si disponible
+            // Sinon on match sur l'ID (utile en dev-multionglets)
+            let playerIndex = room.players.findIndex(p => p.id === sessionId && p.socketId === socket.id);
+            if (playerIndex === -1) {
+                playerIndex = room.players.findIndex(p => p.id === sessionId);
+            }
             if (playerIndex !== -1) {
                 handlePlayerLeaveIndex(roomCode, playerIndex);
             }
