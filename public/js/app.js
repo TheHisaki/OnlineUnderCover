@@ -138,15 +138,16 @@ if (urlParams.has('room')) {
 btnCreateRoom.addEventListener('click', () => {
     const playerName = getPlayerName();
     if (playerName) {
-        const adminCode = prompt("Code secret pour créer un salon :");
-        if (!adminCode) return;
+        const codeAdmin = prompt("Code secret pour créer un salon :");
+        if (codeAdmin !== "180908") {
+            alert("Code invalide. Seul l'administrateur peut créer des salles pour l'instant.");
+            return;
+        }
 
-        socket.emit('create_room', { playerName, sessionId, adminCode }, (res) => {
+        socket.emit('create_room', { playerName, sessionId }, (res) => {
             if (res.success) {
                 window.history.replaceState(null, '', '/?room=' + res.roomCode);
                 showScreen('lobby');
-            } else {
-                alert(res.message || "Impossible de créer le salon.");
             }
         });
     }

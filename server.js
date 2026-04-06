@@ -30,13 +30,7 @@ const generateRoomCode = () => {
 io.on('connection', (socket) => {
     // --- CREER UN SALON ---
     socket.on('create_room', (data, callback) => {
-        const { playerName, sessionId, adminCode } = data;
-
-        // Validation du code secret côté serveur
-        if (adminCode !== "180908") {
-            return callback({ success: false, message: "Code secret invalide." });
-        }
-
+        const { playerName, sessionId } = data;
         let roomCode = generateRoomCode();
         while (rooms[roomCode]) {
             roomCode = generateRoomCode();
